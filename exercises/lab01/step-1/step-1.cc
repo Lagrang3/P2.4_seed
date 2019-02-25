@@ -70,7 +70,7 @@ void second_grid ()
                               10);
   triangulation.set_all_manifold_ids(0);
   const SphericalManifold<2> manifold_description(center);
-  triangulation.set_manifold (0, manifold_description);
+//  triangulation.set_manifold (0, manifold_description);
 
   for (unsigned int step=0; step<5; ++step)
     {
@@ -101,11 +101,14 @@ void second_grid ()
   std::ofstream out ("grid-2.eps");
   GridOut grid_out;
   grid_out.write_eps (triangulation, out);
+  out.close();
+  out.open("grid-2.svg");
+  grid_out.write_svg (triangulation, out);
 
   std::cout << "Grid written to grid-2.eps" << std::endl;
 	
 	info(triangulation);
-  triangulation.set_manifold (0);
+//  triangulation.set_manifold (0);
 }
 
 
@@ -115,4 +118,6 @@ int main ()
 {
   first_grid ();
   second_grid ();
+  std::cout<<"Exited gracefully\n";
+  return 0;
 }
