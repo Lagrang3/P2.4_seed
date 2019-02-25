@@ -30,6 +30,16 @@
 
 using namespace dealii;
 
+template<int DIM>
+void info(const Triangulation<DIM>& T){
+	int nac=0,nc=0;
+	for(auto cell: T) nc++;
+	for(auto cell: T.active_cell_iterators()) nac++;
+	std::cout<<"Active cells: "<<nac<<"\n";
+	std::cout<<"Total cells: "<<nc<<"\n";
+	std::cout<<"Levels: "<<T.n_levels()<<"\n";
+}
+
 
 void first_grid ()
 {
@@ -42,6 +52,7 @@ void first_grid ()
   GridOut grid_out;
   grid_out.write_eps (triangulation, out);
   std::cout << "Grid written to grid-1.eps" << std::endl;
+  info(triangulation);
 }
 
 
@@ -92,7 +103,8 @@ void second_grid ()
   grid_out.write_eps (triangulation, out);
 
   std::cout << "Grid written to grid-2.eps" << std::endl;
-
+	
+	info(triangulation);
   triangulation.set_manifold (0);
 }
 
