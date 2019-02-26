@@ -52,7 +52,7 @@
 
 using namespace dealii;
 
-
+int REFINEMENT_LEVEL;
 
 class Step3
 {
@@ -92,11 +92,11 @@ Step3::Step3 ()
 void Step3::make_grid ()
 {
   GridGenerator::hyper_cube (triangulation, -1, 1);
-  triangulation.refine_global (5);
+  triangulation.refine_global (REFINEMENT_LEVEL);
 
-  std::cout << "Number of active cells: "
-            << triangulation.n_active_cells()
-            << std::endl;
+//  std::cout << "Number of active cells: "
+//            << triangulation.n_active_cells()
+//            << std::endl;
 }
 
 
@@ -105,9 +105,9 @@ void Step3::make_grid ()
 void Step3::setup_system ()
 {
   dof_handler.distribute_dofs (fe);
-  std::cout << "Number of degrees of freedom: "
-            << dof_handler.n_dofs()
-            << std::endl;
+//  std::cout << "Number of degrees of freedom: "
+//            << dof_handler.n_dofs()
+//            << std::endl;
 
   DynamicSparsityPattern dsp(dof_handler.n_dofs());
   DoFTools::make_sparsity_pattern (dof_handler, dsp);
@@ -119,13 +119,31 @@ void Step3::setup_system ()
   system_rhs.reinit (dof_handler.n_dofs());
 }
 
+const double PI=acos(-1.);
 
+double fun(const Point<2>& p){
+	return 40*PI*PI*sin(2*PI*p[0])*sin(6*PI*p[1]);
+}
+
+
+class u_fun_class : public Function<2> 
+{
+	public:
+	
+	u_fun_class() : Function<2>() {}
+	
+	virtual double value(const Point<2>& p, const unsigned int comp=0)
+		const override 
+	{
+		return sin(2*PI*p[0])*sin(6*PI*p[1]);
+	}
+} u_fun ;
 
 void Step3::assemble_system ()
 {
   QGauss<2>  quadrature_formula(2);
   FEValues<2> fe_values (fe, quadrature_formula,
-                         update_values | update_gradients | update_JxW_values);
+                         update_values | update_gradients | update_JxW_values | update_quadrature_points );
 
   const unsigned int   dofs_per_cell = fe.dofs_per_cell;
   const unsigned int   n_q_points    = quadrature_formula.size();
@@ -151,10 +169,11 @@ void Step3::assemble_system ()
               cell_matrix(i,j) += (fe_values.shape_grad (i, q_index) *
                                    fe_values.shape_grad (j, q_index) *
                                    fe_values.JxW (q_index));
-
+			
+			
           for (unsigned int i=0; i<dofs_per_cell; ++i)
             cell_rhs(i) += (fe_values.shape_value (i, q_index) *
-                            1 *
+                            fun( fe_values.quadrature_point(q_index)  )*
                             fe_values.JxW (q_index));
         }
       cell->get_dof_indices (local_dof_indices);
@@ -201,8 +220,15 @@ void Step3::output_results () const
   data_out.add_data_vector (solution, "solution");
   data_out.build_patches ();
 
-  std::ofstream output ("solution.gpl");
-  data_out.write_gnuplot (output);
+  std::ofstream output ("solution.svg");
+  data_out.write_svg (output);
+  
+  Vector<double> exact_solution(dof_handler.n_dofs());
+  VectorTools::interpolate(dof_handler,u_fun,exact_solution);
+  
+  exact_solution -= solution;
+  std::cout << exact_solution.linfty_norm() << std::endl; // difference between exact and FE solutions
+  
 }
 
 
@@ -218,8 +244,11 @@ void Step3::run ()
 
 
 
-int main ()
+int main (int narg, char** args)
 {
+	
+	REFINEMENT_LEVEL=atoi(args[1]);
+
   deallog.depth_console (2);
 
   Step3 laplace_problem;
