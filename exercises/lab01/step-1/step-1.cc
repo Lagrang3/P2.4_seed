@@ -112,12 +112,23 @@ void second_grid ()
 }
 
 
+void third_grid(){
+	Triangulation<2> T;
+	Point<2> center(0,0);
+	GridGenerator::hyper_ball(T,center);
+	const SphericalManifold<2> man(center);
+	
+	std::ofstream out ("grid-3.svg");
+	GridOut grid_out;
+	grid_out.write_svg (T, out);
+}
 
 
 int main ()
 {
   first_grid ();
   second_grid ();
+  third_grid();
   std::cout<<"Exited gracefully\n";
   return 0;
 }
