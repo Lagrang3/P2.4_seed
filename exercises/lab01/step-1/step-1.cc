@@ -15,18 +15,24 @@
 
  */
 
+#include <deal.II/dofs/dof_handler.h>
 
+#include <deal.II/fe/fe_q.h>
 
+#include <deal.II/grid/grid_generator.h>
+#include <deal.II/grid/grid_out.h>
+#include <deal.II/grid/manifold_lib.h>
 #include <deal.II/grid/tria.h>
 #include <deal.II/grid/tria_accessor.h>
 #include <deal.II/grid/tria_iterator.h>
-#include <deal.II/grid/grid_generator.h>
-#include <deal.II/grid/manifold_lib.h>
-#include <deal.II/grid/grid_out.h>
 
-#include <iostream>
-#include <fstream>
+#include <deal.II/lac/vector.h>
+
+#include <deal.II/numerics/data_out.h>
+
 #include <cmath>
+#include <fstream>
+#include <iostream>
 
 using namespace dealii;
 
@@ -41,9 +47,10 @@ void info(const Triangulation<DIM>& T){
 }
 
 
-void first_grid ()
+int main()
 {
-  Triangulation<2> triangulation;
+  const int dim    = 2;
+  const int degree = 2;
 
   GridGenerator::hyper_cube (triangulation);
   triangulation.refine_global (4);
@@ -55,8 +62,13 @@ void first_grid ()
   info(triangulation);
 }
 
+  FE_Q<dim>            fe(degree);
+  DoFHandler<dim>      dh(triangulation);
+  MappingQGeneric<dim> mapping(degree);
 
+  GridGenerator::hyper_shell(triangulation, Point<dim>(), .5, 1.0);
 
+  dh.distribute_dofs(fe);
 
 void second_grid ()
 {
@@ -97,6 +109,10 @@ void second_grid ()
       triangulation.execute_coarsening_and_refinement ();
     }
 
+  DataOut<dim>          data_out;
+  DataOutBase::VtkFlags flags;
+  flags.write_higher_order_cells = true;
+  data_out.set_flags(flags);
 
   std::ofstream out ("grid-2.eps");
   GridOut grid_out;
@@ -111,6 +127,7 @@ void second_grid ()
 //  triangulation.set_manifold (0);
 }
 
+  std::ofstream out("solution.vtk");
 
 void third_grid(){
 	Triangulation<2> T;
@@ -123,6 +140,11 @@ void third_grid(){
 	grid_out.write_svg (T, out);
 }
 
+  for (unsigned int i = 0; i < dh.n_dofs(); ++i)
+    {
+      solution[i][i] = 1;
+      data_out.add_data_vector(solution[i], "solution_" + std::to_string(i));
+    }
 
 int main ()
 {
