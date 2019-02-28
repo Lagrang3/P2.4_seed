@@ -19,6 +19,8 @@
  */
 
 
+#include <deal.II/base/work_stream.h>
+#include <deal.II/base/multithread_info.h>
 #include <deal.II/numerics/error_estimator.h>
 #include <deal.II/grid/tria.h>
 #include <deal.II/dofs/dof_handler.h>
@@ -62,6 +64,8 @@ public:
 
   void run ();
 
+void assemble_system_1cell(const auto& cell,auto& scratch,auto& data);
+void copy_1cell(const auto& data);
 
 private:
 	void refine_grid();
@@ -155,71 +159,103 @@ class u_fun_class : public Function<2>
 	}
 } u_fun ;
 
+struct ScratchData {
+	FEValues<2> fe_values ;
+	
+	ScratchData(
+		const FiniteElement<2>& fe,
+		const Quadrature<2>& q,
+		const UpdateFlags flags):
+			fe_values(fe,q,flags){}
+			
+	ScratchData(const ScratchData& rhs):
+		fe_values(
+			rhs.fe_values.get_fe(),
+			rhs.fe_values.get_quadrature(),
+			rhs.fe_values.get_update_flags()){}
+};
+
+struct PerTaskData {
+
+	FullMatrix<double>   cell_matrix;
+	Vector<double>       cell_rhs;
+	std::vector<types::global_dof_index> local_dof_indices;
+	
+	
+	PerTaskData(const FiniteElement<2>& fe):
+		cell_matrix(fe.dofs_per_cell,fe.dofs_per_cell),
+		cell_rhs(fe.dofs_per_cell),
+		local_dof_indices(fe.dofs_per_cell){}
+};
+
+void Step3::assemble_system_1cell(const auto& cell,auto& scratch,auto& data){
+		
+	const unsigned int n_q_points = scratch.fe_values.n_quadrature_points;
+	const unsigned int dofs_per_cell = scratch.fe_values.dofs_per_cell;
+	scratch.fe_values.reinit (cell);
+
+	data.cell_matrix = 0;
+	data.cell_rhs = 0;
+
+	for (unsigned int q_index=0; q_index<n_q_points; ++q_index)
+	{
+		for (unsigned int i=0; i<dofs_per_cell; ++i)
+		for (unsigned int j=0; j<dofs_per_cell; ++j)
+			data.cell_matrix(i,j) += (
+				scratch.fe_values.shape_grad (i, q_index) *
+				scratch.fe_values.shape_grad (j, q_index) *
+				scratch.fe_values.JxW (q_index));
 
 
+		for (unsigned int i=0; i<dofs_per_cell; ++i)
+			data.cell_rhs(i) += (
+				scratch.fe_values.shape_value (i, q_index) *
+				fun( scratch.fe_values.quadrature_point(q_index)  )*
+				scratch.fe_values.JxW (q_index));
+	}
+	
+	cell->get_dof_indices ( data.local_dof_indices);
+	
+}
+
+
+void Step3::copy_1cell(const auto& data){
+	constraints.distribute_local_to_global(
+		data.cell_matrix,
+		data.cell_rhs,
+		data.local_dof_indices,
+		system_matrix,
+		system_rhs);	
+}
 
 void Step3::assemble_system ()
 {
 	QGauss<2>  quadrature_formula(2);
-	FEValues<2> fe_values (fe, quadrature_formula,
+	
+	ScratchData scratch(fe,quadrature_formula,
 		update_values | update_gradients 
 		| update_JxW_values | update_quadrature_points );
+	
+	PerTaskData data(fe);
 
-	const unsigned int   dofs_per_cell = fe.dofs_per_cell;
-	const unsigned int   n_q_points    = quadrature_formula.size();
-
-	FullMatrix<double>   cell_matrix (dofs_per_cell, dofs_per_cell);
-	Vector<double>       cell_rhs (dofs_per_cell);
-
-	std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
-
+	WorkStream::run(
+		dof_handler.begin_active(),
+		dof_handler.end(),
+		*this,
+		&Step3::assemble_system_1cell,
+		&Step3::copy_1cell,
+		scratch,
+		data);
+	
+/*
 	for (auto cell: dof_handler.active_cell_iterators())
 	{
-		fe_values.reinit (cell);
-
-		cell_matrix = 0;
-		cell_rhs = 0;
-
-		for (unsigned int q_index=0; q_index<n_q_points; ++q_index)
-		{
-			for (unsigned int i=0; i<dofs_per_cell; ++i)
-			for (unsigned int j=0; j<dofs_per_cell; ++j)
-				cell_matrix(i,j) += (
-					fe_values.shape_grad (i, q_index) *
-					fe_values.shape_grad (j, q_index) *
-					fe_values.JxW (q_index));
-
-
-			for (unsigned int i=0; i<dofs_per_cell; ++i)
-				cell_rhs(i) += (
-					fe_values.shape_value (i, q_index) *
-					fun( fe_values.quadrature_point(q_index)  )*
-					fe_values.JxW (q_index));
-		}
 		
-		cell->get_dof_indices (local_dof_indices);
+		assemble_system_1cell(cell,scratch,data);
+		copy_1cell(data);
 		
-		constraints.distribute_local_to_global(
-			cell_matrix,
-			cell_rhs,
-			local_dof_indices,
-			system_matrix,
-			system_rhs);
-
-		/*
-		for (unsigned int i=0; i<dofs_per_cell; ++i)
-		for (unsigned int j=0; j<dofs_per_cell; ++j)
-		system_matrix.add (local_dof_indices[i],
-		local_dof_indices[j],
-		cell_matrix(i,j));
-
-		for (unsigned int i=0; i<dofs_per_cell; ++i)
-		system_rhs(local_dof_indices[i]) += cell_rhs(i);
-		*/
-
 	}
-
-
+*/
 	std::map<types::global_dof_index,double> boundary_values;
 	VectorTools::interpolate_boundary_values (dof_handler,
 											0,
@@ -253,8 +289,8 @@ void Step3::output_results (int i) const
   data_out.add_data_vector (solution, "solution");
   data_out.build_patches ();
 
-  std::ofstream output("solution"+std::to_string(i)+".vtu");
-  data_out.write_vtu (output);
+  std::ofstream output("solution"+std::to_string(i)+".svg");
+  data_out.write_svg (output);
   
   Vector<double> exact_solution(dof_handler.n_dofs());
   VectorTools::interpolate(dof_handler,u_fun,exact_solution);
@@ -286,7 +322,7 @@ void Step3::run ()
 {
 
   	make_grid ();
-	for(int i=0;i<=4;++i){
+	for(int i=0;i<=6;++i){
 		
 		if(i)refine_grid();
 		setup_system ();
@@ -300,10 +336,12 @@ void Step3::run ()
 
 int main (int narg, char** args)
 {
-	
+
+	std::cout<<"threads: "<<MultithreadInfo::n_threads()<<std::endl;
+
 	REFINEMENT_LEVEL=3;
 
-  deallog.depth_console (2);
+  //deallog.depth_console (2);
 
   Step3 laplace_problem;
   laplace_problem.run ();
