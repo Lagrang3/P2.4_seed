@@ -46,29 +46,17 @@ void info(const Triangulation<DIM>& T){
 	std::cout<<"Levels: "<<T.n_levels()<<"\n";
 }
 
-
-int main()
-{
-  const int dim    = 2;
-  const int degree = 2;
-
-  GridGenerator::hyper_cube (triangulation);
-  triangulation.refine_global (4);
-
-  std::ofstream out ("grid-1.eps");
-  GridOut grid_out;
-  grid_out.write_eps (triangulation, out);
-  std::cout << "Grid written to grid-1.eps" << std::endl;
-  info(triangulation);
+void first_grid(){
+	Triangulation<2> triangulation;
+	GridGenerator::hyper_cube (triangulation);
+	triangulation.refine_global(4);
+	
+	std::ofstream out("grid-1.eps");
+	GridOut grid_out;
+	grid_out.write_eps (triangulation,out);
+	std::cout << "Grid written to grid-1.eps" << std::endl;
+	info(triangulation);
 }
-
-  FE_Q<dim>            fe(degree);
-  DoFHandler<dim>      dh(triangulation);
-  MappingQGeneric<dim> mapping(degree);
-
-  GridGenerator::hyper_shell(triangulation, Point<dim>(), .5, 1.0);
-
-  dh.distribute_dofs(fe);
 
 void second_grid ()
 {
@@ -109,11 +97,6 @@ void second_grid ()
       triangulation.execute_coarsening_and_refinement ();
     }
 
-  DataOut<dim>          data_out;
-  DataOutBase::VtkFlags flags;
-  flags.write_higher_order_cells = true;
-  data_out.set_flags(flags);
-
   std::ofstream out ("grid-2.eps");
   GridOut grid_out;
   grid_out.write_eps (triangulation, out);
@@ -127,8 +110,6 @@ void second_grid ()
 //  triangulation.set_manifold (0);
 }
 
-  std::ofstream out("solution.vtk");
-
 void third_grid(){
 	Triangulation<2> T;
 	Point<2> center(0,0);
@@ -140,11 +121,6 @@ void third_grid(){
 	grid_out.write_svg (T, out);
 }
 
-  for (unsigned int i = 0; i < dh.n_dofs(); ++i)
-    {
-      solution[i][i] = 1;
-      data_out.add_data_vector(solution[i], "solution_" + std::to_string(i));
-    }
 
 int main ()
 {
